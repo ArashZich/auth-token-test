@@ -101,7 +101,6 @@ exports.validateToken = async (req, res, next) => {
       return res.status(400).json({ error: "Token is required" });
     }
 
-    const startTime = new Date();
     const validationResult = await tokenService.validateToken(token, req, res);
     console.log("Token validation result:", validationResult);
     res.json(validationResult);

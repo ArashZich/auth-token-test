@@ -5,6 +5,7 @@ const crypto = require("crypto");
 const config = require("../config/environment");
 const { AccessToken, UsageData } = require("../models");
 const { collectUsageData } = require("../utils/usageAnalytics");
+const sessionManager = require("../utils/sessionManager");
 
 const THIRTY_MINUTES = 30 * 60 * 1000;
 
@@ -145,9 +146,10 @@ class TokenService {
       // بررسی ریست ماهانه
       if (this.shouldResetMonthly(tokenInfo.lastUsedAt)) {
         tokenInfo.usageCount = 0;
+        await tokenInfo.save(); // ذخیره‌سازی تغییرات
       }
 
-      // بررسی افزایش تعداد استفاده
+      // بررسی افزایش تعداد استفاده با استفاده از session manager
       const shouldIncrementUsage = this.shouldIncrementUsage(
         tokenInfo,
         req.clientIp
@@ -155,10 +157,12 @@ class TokenService {
 
       if (shouldIncrementUsage) {
         tokenInfo.usageCount++;
+        await tokenInfo.save(); // ذخیره‌سازی تغییرات
 
         // بررسی محدودیت کل
         if (
           tokenInfo.totalLimit !== null &&
+          tokenInfo.totalLimit > 0 &&
           tokenInfo.usageCount > tokenInfo.totalLimit
         ) {
           return {
@@ -166,6 +170,24 @@ class TokenService {
             isPremium: tokenInfo.isPremium,
             projectType: tokenInfo.projectType,
             userId: tokenInfo.clientId,
+            limitExceeded: true,
+            message: "Total request limit exceeded",
+          };
+        }
+
+        // بررسی محدودیت ماهانه
+        if (
+          tokenInfo.monthlyLimit !== null &&
+          tokenInfo.monthlyLimit > 0 &&
+          tokenInfo.usageCount > tokenInfo.monthlyLimit
+        ) {
+          return {
+            isValid: false,
+            isPremium: tokenInfo.isPremium,
+            projectType: tokenInfo.projectType,
+            userId: tokenInfo.clientId,
+            limitExceeded: true,
+            message: "Monthly request limit exceeded",
           };
         }
       }
@@ -210,6 +232,18 @@ class TokenService {
         remaining: tokenInfo.monthlyLimit
           ? tokenInfo.monthlyLimit - tokenInfo.usageCount
           : null,
+        totalLimit: tokenInfo.totalLimit,
+        totalRemaining: tokenInfo.totalLimit
+          ? tokenInfo.totalLimit - tokenInfo.usageCount
+          : null,
+      };
+
+      // اضافه کردن اطلاعات انقضا
+      response.expiration = {
+        expiresAt: tokenInfo.expiresAt,
+        daysRemaining: Math.ceil(
+          (tokenInfo.expiresAt - now) / (1000 * 60 * 60 * 24)
+        ),
       };
 
       return response;
@@ -220,6 +254,10 @@ class TokenService {
         isValid: false,
         isPremium: false,
         projectType: null,
+        error:
+          process.env.NODE_ENV === "development"
+            ? error.message
+            : "Token validation failed",
       };
     }
   }
@@ -246,14 +284,10 @@ class TokenService {
     }
   }
 
+  // جایگزین کردن متد shouldIncrementUsage با این کد:
   shouldIncrementUsage(tokenInfo, ipAddress) {
-    const now = new Date();
-    const lastUsed = new Date(tokenInfo.lastUsedAt);
-    const timeDifference = now - lastUsed;
-
-    return (
-      timeDifference >= THIRTY_MINUTES || tokenInfo.lastUsedIp !== ipAddress
-    );
+    // استفاده از session manager برای تصمیم‌گیری درمورد افزایش شمارنده
+    return sessionManager.shouldCountAsNewRequest(tokenInfo.uid, ipAddress);
   }
 
   calculateExpirationDate(startDate, monthsToAdd) {
@@ -395,12 +429,30 @@ class TokenService {
       throw error;
     }
   }
+
+  // اضافه کردن این متد جدید به TokenService برای پاکسازی جلسات یک توکن
+  // این متد میتواند در زمان revoke کردن توکن استفاده شود
+  async clearTokenSessions(clientId) {
+    try {
+      const token = await AccessToken.findOne({ where: { clientId } });
+      if (token) {
+        sessionManager.clearSessionsByTokenId(token.uid);
+      }
+    } catch (error) {
+      console.error("Error clearing token sessions:", error);
+    }
+  }
+
+  // آپدیت تابع revokeToken برای پاکسازی جلسات توکن هنگام لغو
   async revokeToken(clientId) {
     try {
       const token = await AccessToken.findOne({ where: { clientId } });
       if (!token) {
         throw new Error("Token not found");
       }
+
+      // پاکسازی جلسات توکن قبل از حذف
+      await this.clearTokenSessions(clientId);
 
       await token.destroy();
       return { message: "Token successfully revoked" };
