@@ -1,0 +1,17 @@
+ALTER TABLE usage_data
+  DROP COLUMN referer,
+  DROP COLUMN method,
+  DROP COLUMN endpoint,
+  DROP COLUMN "responseTime",
+  DROP COLUMN "responseStatus";
+
+  select * from "usage_data";
+
+
+
+  ALTER TABLE makeup_usage
+  DROP COLUMN "pattern",
+  DROP COLUMN "transparency";
+
+  select * from "makeup_usage";
+

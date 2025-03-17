@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: auth-token-hub
+    ports:
+      - "3306:3306"  # اطمینان حاصل کنید که این پورت با PORT در تنظیمات محیطی مطابقت دارد
+    environment:
+      - NODE_ENV=production
+      - RESET_DB=${RESET_DB:-false}
+      - PORT=3306  # تنظیم پورت در محیط داخلی کانتینر
+    env_file:
+      - .env.production
+    networks:
+      - armoBridge
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  armoBridge:
+    external: true

@@ -1,0 +1,24 @@
+{
+  "development": {
+    "username": "arashzich",
+    "password": "3edc#EDC3edc#EDC",
+    "database": "auth_token_hub_dev",
+    "host": "localhost",
+    "port": "5432",
+    "dialect": "postgres",
+    "dialectOptions": {
+      "ssl": false
+    }
+  },
+  "production": {
+    "username": "arashzich",
+    "password": "MclkBqB7gULiNLWPQdVtSW7DF0NNbimrzAJh2EkLjXohdyCbO+2y7Pu8wUxvCFNVLpecikXwag7h25wxbu8kMg==",
+    "database": "auth_token_hub_prod",
+    "host": "172.31.0.3",
+    "port": "5432",
+    "dialect": "postgres",
+    "dialectOptions": {
+      "ssl": false
+    }
+  }
+}
