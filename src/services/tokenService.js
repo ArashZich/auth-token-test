@@ -7,8 +7,6 @@ const { AccessToken, UsageData } = require("../models");
 const { collectUsageData } = require("../utils/usageAnalytics");
 const sessionManager = require("../utils/sessionManager");
 
-const THIRTY_MINUTES = 30 * 60 * 1000;
-
 class TokenService {
   async createToken(
     clientId,

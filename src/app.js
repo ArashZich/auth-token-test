@@ -20,7 +20,13 @@ function logAppInfo() {
 
 function setupMiddleware() {
   app.set("trust proxy", 1);
-  app.use(cors());
+  app.use(
+    cors({
+      origin: "*", // یا آدرس‌های مشخص
+      methods: ["GET", "POST"],
+      allowedHeaders: ["Content-Type", "X-Real-User-IP"], // اضافه کردن هدر سفارشی
+    })
+  );
   app.use((req, res, next) => {
     req.clientIp = IpDetector.getClientIp(req);
     logger.debug(`Client IP: ${req.clientIp}`);

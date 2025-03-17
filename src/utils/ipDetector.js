@@ -3,6 +3,16 @@ const requestIp = require("request-ip");
 
 class IpDetector {
   static getClientIp(req) {
+    // اول چک کردن هدر مخصوص
+    const realUserIp = req.headers["x-real-user-ip"];
+    console.log("X-Real-User-IP header:", realUserIp);
+
+    if (realUserIp) {
+      console.log("Using real user IP from header:", realUserIp);
+      return realUserIp;
+    }
+
+    // اگر هدر مخصوص وجود نداشت، از روش قبلی استفاده کن
     const ip =
       req.headers["x-forwarded-for"] ||
       req.headers["x-real-ip"] ||

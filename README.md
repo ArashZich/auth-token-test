@@ -1,7 +1,79 @@
+# Auth Token Hub
 
+سامانه مدیریت توکن‌های دسترسی برای API ها و سرویس‌های مختلف
 
+## معرفی پروژه
 
-# راهنمای استفاده از API توکن
+Auth Token Hub یک سامانه مدیریت توکن برای کنترل دسترسی کاربران به API و سرویس‌های مختلف است. این سیستم امکان ایجاد، اعتبارسنجی، به‌روزرسانی و لغو توکن‌ها را فراهم می‌کند و همچنین قابلیت محدودیت تعداد درخواست (Rate Limiting) و آمارگیری استفاده را دارد.
+
+## ویژگی‌های کلیدی
+
+- ایجاد توکن‌های JWT امن با تاریخ انقضا مشخص
+- پشتیبانی از توکن‌های نامحدود و محدود
+- سیستم هوشمند مدیریت جلسه برای محاسبه دقیق تعداد درخواست‌ها
+- محدودیت‌های ماهانه و کلی برای استفاده از API
+- جمع‌آوری داده‌های آماری از استفاده توکن‌ها
+- رابط API کامل برای مدیریت توکن‌ها
+- مستندات Swagger برای API ها
+- پشتیبانی از ویژگی‌های اختصاصی برای هر توکن
+
+## معماری سیستم
+
+```mermaid
+flowchart TB
+    Client([کلاینت]) --> API[API Endpoints]
+    API --> Middleware[میدل‌ویر‌ها]
+    Middleware --> Controllers[کنترلرها]
+    Controllers --> Services[سرویس‌ها]
+    Services --> Models[مدل‌ها]
+    Models --> Database[(دیتابیس PostgreSQL)]
+    
+    subgraph Utils[ابزارها]
+        SessionManager[مدیریت جلسه]
+        IpDetector[تشخیص IP]
+        UsageAnalytics[آنالیز استفاده]
+        Logger[سیستم لاگ]
+    end
+    
+    Services --> Utils
+```
+
+## گردش کار سیستم
+
+```mermaid
+sequenceDiagram
+    participant Client as کلاینت
+    participant API as API Endpoints
+    participant Token as TokenService
+    participant Session as SessionManager
+    participant DB as دیتابیس
+    
+    Client->>API: ارسال درخواست با توکن
+    API->>Token: validateToken(token)
+    Token->>DB: جستجو و بررسی توکن
+    Token->>Session: بررسی جلسه فعال
+    
+    alt توکن نامحدود
+        Session-->>Token: وضعیت جلسه
+        Token->>DB: ثبت داده‌های آماری
+        Token-->>API: توکن معتبر است
+    else توکن محدود
+        Session-->>Token: درخواست جدید است
+        Token->>DB: افزایش شمارنده استفاده
+        
+        alt محدودیت تمام شده
+            Token-->>API: توکن معتبر نیست
+        else محدودیت موجود
+            Token->>DB: ثبت داده‌های آماری
+            Token-->>API: توکن معتبر است
+        end
+    else توکن منقضی شده یا نامعتبر
+        Token-->>API: توکن معتبر نیست
+    end
+    
+    API-->>Client: پاسخ به کلاینت
+```
+
 ## نصب و راه‌اندازی
 
 1. مخزن را کلون کنید
@@ -26,20 +98,6 @@
     "projectType": "web"
   }
   ```
-
-  یا
-
-  ```json
-  {
-    "clientId": "client123",
-    "durationMonths": 3,
-    "isUnlimited": true,
-    "isPremium": true,
-    "projectType": "mobile"
-  }
-  ```
-
-  **نکته:** برای توکن‌های نامحدود، `"isUnlimited": true` را تنظیم کنید و `monthlyLimit` را حذف کنید.
 
 ### 2. اعتبارسنجی توکن کاربر
 - **روش:** `POST`
@@ -76,17 +134,11 @@
   }
   ```
 
-  **نکته:** می‌توانید فقط فیلدهایی که می‌خواهید به‌روزرسانی کنید را ارسال کنید.
-
 ### 6. لغو توکن کاربر
 - **روش:** `POST`
 - **آدرس:** `/api/v1/{clientId}/revoke`
 
-### 7. بررسی سلامت سرور
-- **روش:** `GET`
-- **آدرس:** `/api/v1/health`
-
-### 8. دریافت داده‌های آنالیز
+### 7. دریافت داده‌های آنالیز
 - **روش:** `GET`
 - **آدرس:** `/api/v1/analytics/{clientId}`
 - **پارامترهای Query:**
@@ -94,79 +146,81 @@
   - `page`: شماره صفحه برای صفحه‌بندی - پیش‌فرض: `1`
   - `pageSize`: تعداد آیتم‌ها در هر صفحه - پیش‌فرض: `20`
 
-- **مثال درخواست:**
+## تغییرات اخیر: سیستم مدیریت جلسه
 
-  ```
-  GET /api/v1/analytics/client123?period=month&page=1&pageSize=50
-  ```
+در نسخه جدید، یک سیستم مدیریت جلسه (Session Management) هوشمند پیاده‌سازی شده است که محدودیت‌های استفاده از توکن را بهینه‌تر می‌کند:
 
-- **پاسخ:**
+### نحوه عملکرد
+- هر کاربر بر اساس توکن و IP آدرس، یک جلسه فعال دارد که برای مدت مشخصی (پیش‌فرض: 15 دقیقه) معتبر است.
+- درخواست‌های متعدد در این بازه زمانی فقط یک بار شمارش می‌شود.
+- این سیستم باعث می‌شود که رفرش‌های مکرر صفحه باعث کاهش زیاد تعداد درخواست‌های مجاز نشود.
+- برای توکن‌های نامحدود، تمام درخواست‌ها ثبت می‌شوند اما محدودیتی اعمال نمی‌شود.
+- جلسات منقضی شده به صورت دوره‌ای پاکسازی می‌شوند تا از مصرف بی‌رویه حافظه جلوگیری شود.
 
-  ```json
-  {
-    "uid": "faec6802-48c3-4617-8dad-c1bf62d5f223",
-    "clientId": "client123",
-    "period": "month",
-    "totalRequestCount": 5000,
-    "currentUsageCount": 1500,
-    "data": [...],
-    "pagination": {
-      "currentPage": 1,
-      "pageSize": 50,
-      "totalPages": 10,
-      "totalCount": 500
-    },
-    "tokenInfo": {
-      "isUnlimited": false,
-      "monthlyLimit": 1000,
-      "durationMonths": 3,
-      "expiresAt": "2023-12-31T23:59:59.999Z",
-      "isPremium": true,
-      "projectType": "web"
-    }
-  }
-  ```
+### مزایا
+- تجربه کاربری بهتر با حفظ محدودیت‌های امنیتی
+- محاسبه دقیق‌تر تعداد استفاده واقعی از سرویس
+- جلوگیری از کاهش ناخواسته اعتبار کاربر در اثر رفرش‌های مکرر
 
-### 9. دریافت داده‌های آنالیز با UID
-- **روش:** `GET`
-- **آدرس:** `/api/v1/analytics/uid/{uid}`
-- **پارامترهای Query:** مشابه با endpoint قبلی
+## ساختار پروژه
 
-### 10. ایجاد توکن API
-- **روش:** `POST`
-- **آدرس:** `/api/v1/api-auth/create-token`
-- **بدنه درخواست:**
-
-  ```json
-  {
-    "name": "John Doe",
-    "phoneNumber": "1234567890",
-    "description": "API token for admin"
-  }
-  ```
-
-### 11. دریافت همه توکن‌های API
-- **روش:** `GET`
-- **آدرس:** `/api/v1/api-auth/tokens`
-
-### 12. غیرفعال کردن توکن API
-- **روش:** `POST`
-- **آدرس:** `/api/v1/api-auth/deactivate/{id}`
-
-## نکات مهم:
-- در تمام آدرس‌ها، `localhost:3306` را با آدرس و پورت صحیح سرور خود جایگزین کنید.
-- در درخواست‌هایی که نیاز به `clientId` دارند، `client123` را با شناسه مشتری مورد نظر خود جایگزین کنید.
-- در درخواست اعتبارسنجی توکن، `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...` را با توکن واقعی جایگزین کنید.
-- توکن‌های نامحدود محدودیت درخواست ماهانه و کل ندارند.
-- برای توکن‌های محدود، محدودیت کل به صورت `محدودیت ماهانه * تعداد ماه‌ها` محاسبه می‌شود.
-- برای توکن‌های محدود، درخواست‌ها از یک IP یکسان در بازه 30 دقیقه‌ای به عنوان یک درخواست محسوب می‌شوند.
-- در بخش آنالیز، می‌توانید داده‌های استفاده را برای دوره‌های زمانی مختلف و با صفحه‌بندی دریافت کنید.
-- برای استفاده از API‌های محافظت شده، باید از توکن API در هدر `Authorization` استفاده کنید.
-
-## توسعه
-- برای اجرای تست‌ها: `yarn test`
-- برای اجرای لینتر: `yarn lint`
-
-## مستندات API
-مستندات Swagger در آدرس `/api-docs` در دسترس است.
 ```
+auth-token-hub/
+├── src/
+│   ├── config/
+│   │   ├── database.js
+│   │   ├── environment.js
+│   │   └── swagger.js
+│   ├── controllers/
+│   │   ├── analytics/
+│   │   ├── apiAuth/
+│   │   └── token/
+│   ├── middleware/
+│   │   ├── authMiddleware.js
+│   │   ├── errorHandler.js
+│   │   └── rateLimiter.js
+│   ├── models/
+│   │   ├── AccessToken.js
+│   │   ├── ApiToken.js
+│   │   ├── MakeupUsage.js
+│   │   └── UsageData.js
+│   ├── routes/
+│   │   ├── analyticsRoutes.js
+│   │   ├── apiAuthRoutes.js
+│   │   └── tokenRoutes.js
+│   ├── services/
+│   │   ├── analyticsService.js
+│   │   ├── apiTokenService.js
+│   │   ├── makeupAnalyticsService.js
+│   │   └── tokenService.js
+│   └── utils/
+│       ├── ipDetector.js
+│       ├── logger.js
+│       ├── sessionManager.js
+│       ├── usageAnalytics.js
+│       └── userAgentUtils.js
+├── .env.development
+├── .env.example
+├── .eslintrc.js
+├── CONTRIBUTING.md
+├── docker-compose.yml
+├── Dockerfile
+├── package.json
+├── README.md
+└── yarn.lock
+```
+
+## توسعه و تست
+- `yarn dev`: اجرای برنامه در حالت توسعه
+- `yarn dev:reset`: اجرای برنامه با ریست دیتابیس
+- `yarn lint`: اجرای لینتر
+- `yarn test`: اجرای تست‌ها
+
+## داکر
+- `yarn docker:build`: ساخت تصویر داکر
+- `yarn docker:up`: اجرای کانتینر
+- `yarn docker:down`: توقف کانتینر
+- `yarn docker:logs`: مشاهده لاگ‌ها
+
+## مستندات
+مستندات Swagger در آدرس `/api-docs` در دسترس است و جزئیات کامل API ها را نشان می‌دهد.
